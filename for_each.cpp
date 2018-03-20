@@ -2,11 +2,25 @@
 #include <agency/agency.hpp>
 #include <tuple>
 #include <vector>
+#include <cassert>
 
-template<class ExecutionAgent, class Executor>
-struct basic_thrust_policy : agency::basic_execution_policy<ExecutionAgent, Executor>,
-                             thrust::execution_policy<basic_thrust_policy<ExecutionAgent, Executor>>
+#include "acc.hpp"
+
+template<class Executor>
+class basic_parallel_policy : public agency::basic_execution_policy<agency::parallel_agent, Executor, basic_parallel_policy<Executor>>,
+                              public thrust::execution_policy<basic_parallel_policy<Executor>>
 {
+  private:
+    using super_t = agency::basic_execution_policy<agency::parallel_agent, Executor, basic_parallel_policy<Executor>>;
+
+  public:
+    using super_t::super_t;
+
+    template<class ReplacementExecutor>
+    basic_parallel_policy<ReplacementExecutor> replace_executor(const ReplacementExecutor& ex) const
+    {
+      return basic_parallel_policy<ReplacementExecutor>(this->param(), ex);
+    }
 };
 
 
@@ -19,7 +33,7 @@ Iterator for_each(ExecutionPolicy policy, Iterator first, Iterator last, Functio
   std::cout << "Hello, world from for_each(my_policy)!" << std::endl;
 
   using namespace agency;
-  auto ex = require(policy.executor(), bulk, twoway);
+  auto ex = agency::require(policy.executor(), bulk, twoway);
 
   // XXX TODO: implement agency::prefer
   //auto ex = prefer(require(policy.executor(), bulk, twoway), always_blocking);
@@ -29,7 +43,7 @@ Iterator for_each(ExecutionPolicy policy, Iterator first, Iterator last, Functio
   using index_type = executor_index_t<decltype(ex)>;
 
   ex.bulk_twoway_execute(
-    [=](index_type idx, ignore_t&, ignore_t&)
+    [=](index_type idx, ignore_t&, ignore_t&) mutable
     {
       // XXX TODO: cast idx to iterator_difference
 
@@ -40,16 +54,26 @@ Iterator for_each(ExecutionPolicy policy, Iterator first, Iterator last, Functio
     []{ return std::ignore; }
   ).wait();
 
+  //using agent_type = typename ExecutionPolicy::execution_agent_type;
+
+  //agency::bulk_invoke(policy(n), [=](agent_type& self)
+  //{
+  //  f(first[self.rank()]);
+  //});
+
   return first + n;
 }
 
 int main()
 {
-  std::vector<int> vec(1);
+  std::vector<int> vec(1, 13);
 
-  using my_policy = basic_thrust_policy<agency::parallel_agent, agency::parallel_executor>;
-  my_policy policy;
+  basic_parallel_policy<agency::parallel_executor> par;
+  
+  thrust::for_each(par.on(acc_executor()), vec.begin(), vec.end(), thrust::identity<int>());
 
-  thrust::for_each(policy, vec.begin(), vec.end(), thrust::identity<int>());
+  thrust::transform(par.on(acc_executor()), vec.begin(), vec.end(), vec.begin(), thrust::negate<int>());
+
+  assert(vec[0] == -13);
 }
 
