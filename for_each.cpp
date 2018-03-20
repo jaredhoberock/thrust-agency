@@ -33,6 +33,8 @@ Iterator for_each(ExecutionPolicy policy, Iterator first, Iterator last, Functio
   std::cout << "Hello, world from for_each(my_policy)!" << std::endl;
 
   using namespace agency;
+
+  // XXX TODO: bake these requirements into .on() or agency::bulk_invoke()?
   auto ex = agency::require(policy.executor(), bulk, twoway);
 
   // XXX TODO: implement agency::prefer
