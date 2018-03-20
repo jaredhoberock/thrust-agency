@@ -6,6 +6,11 @@
 
 #include "acc.hpp"
 
+
+// to compose with Thrust, we need to define an execution policy type
+// derive from agency::basic_execution_policy to get conveniences like .on(), .executor(), etc.
+// derive from thrust::execution_policy to hook into Thrust's algorithm dispatch machinery
+// XXX it would be nice not to have to derive from thrust::execution_policy and instead simply define overloads for the algorithms we're interested in customizing, as we do below
 template<class Executor>
 class basic_parallel_policy : public agency::basic_execution_policy<agency::parallel_agent, Executor, basic_parallel_policy<Executor>>,
                               public thrust::execution_policy<basic_parallel_policy<Executor>>
