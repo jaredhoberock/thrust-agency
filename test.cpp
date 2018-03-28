@@ -28,6 +28,7 @@
 // $ pgc++ -std=c++11 -ta:tesla,cc70,managed -I$AGENCY_INC_PATH test.cpp
 
 #include <agency/agency.hpp>
+#include <thrust/for_each.h>
 #include <tuple>
 #include <vector>
 #include <cassert>
@@ -41,6 +42,6 @@ int main()
 
   basic_parallel_policy<agency::parallel_executor> par;
   
-  for_each(par.on(acc_executor()), vec.begin(), vec.end(), [](int){});
+  thrust::for_each(par.on(acc_executor()), vec.begin(), vec.end(), [](int){});
 }
 
