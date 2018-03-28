@@ -29,6 +29,11 @@
 #include <agency/agency.hpp>
 #include <thrust/execution_policy.h>
 
+
+namespace experimental
+{
+
+
 // to compose with Thrust, we need to define an execution policy type:
 //
 // 1. derive from agency::basic_execution_policy to get conveniences like .on(), .executor(), etc. Thrust is oblivious to these conveniences.
@@ -50,4 +55,7 @@ class basic_parallel_policy : public agency::basic_execution_policy<agency::para
       return basic_parallel_policy<ReplacementExecutor>(this->param(), ex);
     }
 };
+
+
+} // end experimental
 
