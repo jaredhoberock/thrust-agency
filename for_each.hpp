@@ -32,8 +32,6 @@
 template<class ExecutionPolicy, class Iterator, class Function>
 Iterator for_each(ExecutionPolicy&& policy, Iterator first, Iterator last, Function f)
 {
-  std::cout << "Hello, world from for_each(my_policy)!" << std::endl;
-
   using namespace agency;
 
   // XXX TODO: bake these requirements into .on() or agency::bulk_invoke()?
