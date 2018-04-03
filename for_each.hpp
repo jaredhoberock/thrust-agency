@@ -51,7 +51,7 @@ Iterator for_each(ExecutionPolicy&& policy, Iterator first, Iterator last, Funct
   using ignore_t = decltype(std::ignore);
 
   ex.bulk_twoway_execute(
-    [=](index_type idx, ignore_t&, ignore_t&) mutable
+    [=] __AGENCY_ANNOTATION (index_type idx, ignore_t&, ignore_t&) mutable
     {
       // XXX TODO: cast idx to iterator_difference
 

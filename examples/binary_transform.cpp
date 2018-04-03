@@ -25,18 +25,34 @@
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include <agency/agency.hpp>
+#include <agency/cuda/execution/executor/parallel_executor.hpp>
 #include <agency/omp/execution.hpp>
 #include <thrust/transform.h>
 #include <thrust/system/omp/execution_policy.h>
-#include <vector>
+#include <agency/container/vector.hpp>
 #include <cassert>
 #include <iostream>
 #include <chrono>
 
 #include "for_each.hpp"
+#include "transform.hpp"
 #include "acc_executor.hpp"
 #include "tbb_executor.hpp"
 #include "execution_policy_allocator.hpp"
+
+
+template<class ExecutionPolicy>
+void synchronize_if(ExecutionPolicy&&)
+{
+}
+
+#if __CUDACC__
+void synchronize_if(decltype(thrust::cuda::par))
+{
+  // we need to synchronize after transform for thrust::cuda::par
+  cudaDeviceSynchronize();
+}
+#endif
 
 
 template<class ExecutionPolicy>
@@ -48,6 +64,8 @@ void saxpy(ExecutionPolicy&& policy, size_t n, float a, const float* x, const fl
   {
     return a * x + y;
   });
+
+  synchronize_if(policy);
 }
 
 
@@ -57,17 +75,17 @@ double test(ExecutionPolicy policy, size_t n)
   using allocator_type = execution_policy_allocator_t<ExecutionPolicy, float>;
 
   // set up some inputs
-  std::vector<float, allocator_type> x(n, 1), y(n, 2);
+  agency::vector<float, allocator_type> x(n, 1), y(n, 2);
   float a = 13.;
 
   // storage for the result
-  std::vector<float, allocator_type> result(n);
+  agency::vector<float, allocator_type> result(n);
 
   // run once
   saxpy(policy, n, a, x.data(), y.data(), result.data());
 
   // check the result
-  std::vector<float> ref(n, a * 1.f + 2.f);
+  agency::vector<float> ref(n, a * 1.f + 2.f);
   assert(ref == result);
 
   // time a number of trials
@@ -89,14 +107,20 @@ int main()
 {
   // select a policy based on compilation environment
   auto policy = 
-#if defined(USE_AGENCY_OPENACC)
+#if defined(USE_AGENCY_CUDA)
+    experimental::basic_parallel_policy<agency::parallel_executor>().on(agency::cuda::parallel_executor())
+#elif defined(USE_AGENCY_OPENACC)
     experimental::basic_parallel_policy<agency::parallel_executor>().on(acc_executor())
 #elif defined(USE_AGENCY_OPENMP)
     experimental::basic_parallel_policy<agency::parallel_executor>().on(agency::omp::parallel_executor())
 #elif defined(USE_AGENCY_TBB)
     experimental::basic_parallel_policy<agency::parallel_executor>().on(tbb_executor())
+#elif defined(USE_THRUST_CUDA)
+    thrust::cuda::par
 #elif defined(USE_THRUST_OPENMP)
     thrust::omp::par
+#elif defined(USE_THRUST_TBB)
+    thrust::tbb::par
 #else
     experimental::basic_parallel_policy<agency::parallel_executor>()
 #endif
