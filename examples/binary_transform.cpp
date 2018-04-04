@@ -99,11 +99,11 @@ double test(ExecutionPolicy policy, size_t n)
   std::chrono::duration<double> elapsed_seconds = std::chrono::high_resolution_clock::now() - start;
 
   auto mean_seconds = elapsed_seconds.count() / num_trials;
-  double gigabytes = double(3 * n * sizeof(float)) / n;
+  double gigabytes = double(3 * n * sizeof(float)) / (1 << 30);
   return gigabytes / mean_seconds;
 }
 
-int main()
+int main(int argc, char** argv)
 {
   // select a policy based on compilation environment
   auto policy = 
@@ -127,8 +127,14 @@ int main()
   ;
 
   size_t n = 8 << 20;
+  if(argc > 1)
+  {
+    n = std::atoi(argv[1]);
+  }
 
   double bandwidth = test(policy, n);
+
+  std::clog << n << ", " << bandwidth << std::endl;
 
   std::cout << "Binary transform bandwidth: " << bandwidth << " GB/s" << std::endl;
 
