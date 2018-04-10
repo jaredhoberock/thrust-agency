@@ -28,7 +28,7 @@
 
 #include <agency/future/always_ready_future.hpp>
 #include <agency/detail/type_traits.hpp>
-#include <agency/execution/execution_categories.hpp>
+#include <agency/execution/executor/properties/bulk_guarantee.hpp>
 
 // TBB doesn't support the PGI compiler
 #if !defined(__PGI)
@@ -39,10 +39,13 @@
 class tbb_executor
 {
   public:
-    using execution_category = agency::parallel_execution_tag;
-
     template<class T>
     using future = agency::always_ready_future<T>;
+
+    constexpr static agency::bulk_guarantee_t::parallel_t query(const agency::bulk_guarantee_t&)
+    {
+      return agency::bulk_guarantee_t::parallel_t();
+    }
 
   private:
     template<class Function, class Result, class SharedParameter>

@@ -28,15 +28,18 @@
 
 #include <agency/future/always_ready_future.hpp>
 #include <agency/detail/type_traits.hpp>
-#include <agency/execution/execution_categories.hpp>
+#include <agency/execution/executor/properties/bulk_guarantee.hpp>
 
 class acc_executor
 {
   public:
-    using execution_category = agency::parallel_execution_tag;
-
     template<class T>
     using future = agency::always_ready_future<T>;
+
+    constexpr static agency::bulk_guarantee_t::parallel_t query(const agency::bulk_guarantee_t&)
+    {
+      return agency::bulk_guarantee_t::parallel_t();
+    }
 
     template<class Function, class ResultFactory, class SharedFactory>
     future<agency::detail::result_of_t<ResultFactory()>>
