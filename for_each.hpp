@@ -27,6 +27,7 @@
 #pragma once
 
 #include "basic_parallel_policy.hpp"
+#include <agency/bulk_invoke.hpp>
 
 
 namespace experimental
@@ -36,38 +37,14 @@ namespace experimental
 template<class ExecutionPolicy, class Iterator, class Function>
 Iterator for_each(ExecutionPolicy&& policy, Iterator first, Iterator last, Function f)
 {
-  using namespace agency;
-
-  // XXX TODO: bake these requirements into .on() or agency::bulk_invoke()?
-  auto ex = agency::require(policy.executor(), bulk, twoway);
-
-  // XXX TODO: implement agency::prefer
-  //auto ex = prefer(require(policy.executor(), bulk, twoway), always_blocking);
-
   auto n = std::distance(first, last);
 
-  using index_type = executor_index_t<decltype(ex)>;
+  using agent_type = typename std::decay<ExecutionPolicy>::type::execution_agent_type;
 
-  using ignore_t = decltype(std::ignore);
-
-  ex.bulk_twoway_execute(
-    [=] __AGENCY_ANNOTATION (index_type idx, ignore_t&, ignore_t&) mutable
-    {
-      // XXX TODO: cast idx to iterator_difference
-
-      f(first[idx]);
-    },
-    std::distance(first, last),
-    []{ return std::ignore; },
-    []{ return std::ignore; }
-  ).wait();
-
-  //using agent_type = typename std::decay<ExecutionPolicy>::type::execution_agent_type;
-
-  //agency::bulk_invoke(policy(n), [=](agent_type& self) mutable
-  //{
-  //  f(first[self.rank()]);
-  //});
+  agency::bulk_invoke(policy(n), [=] __AGENCY_ANNOTATION (agent_type& self) mutable
+  {
+    f(first[self.rank()]);
+  });
 
   return first + n;
 }
