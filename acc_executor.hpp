@@ -41,6 +41,12 @@ class acc_executor
       return agency::bulk_guarantee_t::parallel_t();
     }
 
+    // XXX consider exposing this via a query instead
+    size_t unit_shape() const
+    {
+      return number_of_processors();
+    }
+
     template<class Function, class ResultFactory, class SharedFactory>
     future<agency::detail::result_of_t<ResultFactory()>>
       bulk_twoway_execute(Function f, size_t n, ResultFactory result_factory, SharedFactory shared_factory) const
@@ -55,6 +61,20 @@ class acc_executor
       }
 
       return agency::make_always_ready_future(std::move(result));
+    }
+
+  private:
+    constexpr static size_t number_of_processors()
+    {
+#if PGI_TESLA_TARGET
+      // hard code this to Titan V's size, for now, while we figure out how to query OpenACC for this number
+      return 80 * 256;
+#elif PGI_MULTICORE_TARGET
+      // hard code this for the number of i9-7960X hardware thread contexts
+      return 32;
+#else
+      return 1;
+#endif
     }
 };
 
