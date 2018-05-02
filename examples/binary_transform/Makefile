@@ -1,6 +1,6 @@
 AGENCY_INC_PATH := "/home/jhoberock/dev/git/agency-tot"
 
-INCLUDES := -I.. -I$(AGENCY_INC_PATH)
+INCLUDES := -I../.. -I$(AGENCY_INC_PATH)
 
 all: binary_transform_agency_cuda binary_transform_agency_acc binary_transform_agency_omp binary_transform_agency_tbb binary_transform_thrust_cuda binary_transform_thrust_omp binary_transform_thrust_tbb
 
