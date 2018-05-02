@@ -39,12 +39,32 @@
 #include "tbb_executor.hpp"
 #include "execution_policy_allocator.hpp"
 
+#ifdef USE_INTEL_PSTL
+#include <pstl/execution>
+#include <pstl/numeric>
+#endif // USE_INTEL_PSTL
+
 
 template<class ExecutionPolicy>
 int sum(ExecutionPolicy&& policy, size_t n, const int* x)
 {
   return thrust::reduce(policy, x, x + n);
 }
+
+#ifdef USE_INTEL_PSTL
+int sum(pstl::execution::v1::parallel_policy policy, size_t n, const int* x)
+{
+  return std::reduce(policy, x, x + n);
+}
+
+
+template<class T>
+struct execution_policy_allocator<pstl::execution::v1::parallel_policy, T>
+{
+  using type = std::allocator<T>;
+};
+
+#endif // USE_INTEL_PSTL
 
 
 template<class ExecutionPolicy>
@@ -99,6 +119,8 @@ int main(int argc, char** argv)
     thrust::omp::par
 #elif defined(USE_THRUST_TBB)
     thrust::tbb::par
+#elif defined(USE_INTEL_PSTL)
+    pstl::execution::v1::par
 #else
     experimental::basic_parallel_policy<agency::parallel_executor>()
 #endif

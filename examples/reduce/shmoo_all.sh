@@ -8,3 +8,4 @@
 ./shmoo_reduce.py reduce_thrust_cuda.out > reduce_thrust_cuda.csv
 ./shmoo_reduce.py reduce_thrust_omp.out > reduce_thrust_omp.csv
 ./shmoo_reduce.py reduce_thrust_tbb.out > reduce_thrust_tbb.csv
+./shmoo_reduce.py reduce_intel_pstl.out > reduce_intel_pstl.csv
