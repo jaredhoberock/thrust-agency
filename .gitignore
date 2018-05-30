@@ -1,0 +1,22 @@
+# ignore all files, so that we can ignore executables created by build systems
+*
+
+# don't ignore directories, so we can recurse into them
+!*/
+
+# don't ignore files that have an extension
+!*.*
+
+# ignore intermediate files introduced by build systems
+*.o
+*.out
+
+# don't ignore makefiles
+!**/Makefile
+
+# ignore automatically generated output
+*.csv
+
+# ignore files produced by compiler diagnostics (typically named errors.txt)
+*.txt
+

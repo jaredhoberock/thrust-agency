@@ -24,110 +24,66 @@
 // (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-#include <agency/experimental/ranges/iterator_range.hpp>
-#include <agency/experimental/ranges/tile.hpp>
-#include <vector>
-#include <chrono>
-#include <algorithm>
-#include <numeric>
+#include <agency/agency.hpp>
+#include <agency/cuda/execution/executor/parallel_executor.hpp>
+#include <agency/omp/execution.hpp>
+#include <thrust/scan.h>
+#include <thrust/system/omp/execution_policy.h>
+#include <agency/container/vector.hpp>
 #include <cassert>
 #include <iostream>
-#include <thread>
+#include <chrono>
+
+#include "inclusive_scan.hpp"
+#include "acc_executor.hpp"
+#include "tbb_executor.hpp"
+#include "execution_policy_allocator.hpp"
 
 
-template<class Iterator1, class Iterator2, class T>
-Iterator2 sequential_inclusive_scan(Iterator1 first, Iterator1 last, Iterator2 result, T init)
+#ifdef USE_INTEL_PSTL
+#include <pstl/execution>
+#include <pstl/numeric>
+#endif // USE_INTEL_PSTL
+
+
+template<class ExecutionPolicy>
+void scan(ExecutionPolicy&& policy, const int* first, const int* last, int* result)
 {
-  if(first != last)
-  {
-    auto sum = init + *first;
+  thrust::inclusive_scan(policy, first, last, result);
+}
 
-    *result = sum;
-
-    // XXX this loop yields nvbug 2102509
-    for(++first, ++result; first != last; ++first, ++result)
-      *result = sum = (sum + *first);
-  }
-
-  return result;
+#ifdef USE_INTEL_PSTL
+void scan(pstl::execution::v1::parallel_policy policy, const int* first, const int* last, int* result)
+{
+  std::inclusive_scan(policy, first, last, result);
 }
 
 
-template<class Iterator1, class Iterator2, class T>
-Iterator2 sequential_exclusive_scan(Iterator1 first, Iterator1 last, Iterator2 result, T init)
+template<class T>
+struct execution_policy_allocator<pstl::execution::v1::parallel_policy, T>
 {
-  if(first != last)
-  {
-    auto tmp = *first;  // temporary value allows in-situ scan
-    auto sum = init;
-
-    *result = sum;
-    sum = sum + tmp;
-
-    for(++first, ++result; first != last; ++first, ++result)
-    {
-      tmp = *first;
-      *result = sum;
-      sum = sum + tmp;
-    }
-  }
-
-  return result;
-}
+  using type = std::allocator<T>;
+};
+#endif
 
 
-void inclusive_scan(const int* first, const int* last, int* result, int init)
+template<class ExecutionPolicy>
+double test(ExecutionPolicy policy, size_t n)
 {
-  using namespace agency::experimental;
+  using allocator_type = execution_policy_allocator_t<ExecutionPolicy, int>;
 
-  size_t num_tiles = std::thread::hardware_concurrency();
-
-  // create a view of the input
-  auto input = make_iterator_range(first, last);
-
-  // divide the input into a number of tiles approximately equal to the executor's unit_shape
-  auto input_tiles = tile_evenly(input, num_tiles);
-
-  // phase 1: for each tile, compute its sum
-  std::vector<int> carries(input_tiles.size());
-  #pragma acc parallel loop
-  for(size_t i = 0; i < input_tiles.size(); ++i)
-  {
-    carries[i] = std::accumulate(input_tiles[i].begin(), input_tiles[i].end(), 0, std::plus<int>());
-  }
-
-  // phase 2: exclusive_scan the sums to turn them into carry-ins for phase 3
-  sequential_exclusive_scan(carries.begin(), carries.end(), carries.begin(), init);
-
-  // phase 3: inclusive_scan to the result, using the carries as initializers
-  auto output = make_iterator_range(result, result + (last - first));
-  auto output_tiles = tile_evenly(output, num_tiles);
-  assert(output_tiles.size() == input_tiles.size());
-  #pragma acc parallel loop
-  for(size_t i = 0; i < input_tiles.size(); ++i)
-  {
-    auto input_tile = input_tiles[i];
-    auto output_tile = output_tiles[i];
-
-    sequential_inclusive_scan(input_tile.begin(), input_tile.end(), output_tile.begin(), carries[i]);
-  }
-}
-
-
-double test(size_t n)
-{
   // set up some random inputs
-  std::vector<int> x(n, 1);
+  agency::vector<int, allocator_type> x(n, 1);
   std::generate(x.begin(), x.end(), std::default_random_engine());
 
   // storage for the result
-  std::vector<int> result(n);
+  agency::vector<int, allocator_type> result(n);
 
   // run once
-  inclusive_scan(x.data(), x.data() + x.size(), result.data(), 0);
+  scan(policy, x.data(), x.data() + x.size(), result.data());
 
   // check the result
-  std::vector<int> expected_result(n);
+  agency::vector<int, allocator_type> expected_result(n);
   std::partial_sum(x.begin(), x.end(), expected_result.begin());
   assert(expected_result == result);
 
@@ -137,7 +93,7 @@ double test(size_t n)
   auto start = std::chrono::high_resolution_clock::now();
   for(size_t i = 0; i < num_trials; ++i)
   {
-    inclusive_scan(x.data(), x.data() + x.size(), result.data(), 0);
+    scan(policy, x.data(), x.data() + x.size(), result.data());
   }
   std::chrono::duration<double> elapsed_seconds = std::chrono::high_resolution_clock::now() - start;
 
@@ -149,18 +105,43 @@ double test(size_t n)
 
 int main(int argc, char** argv)
 {
+  // select a policy based on compilation environment
+  auto policy = 
+#if defined(USE_AGENCY_CUDA)
+    experimental::basic_parallel_policy<agency::parallel_executor>().on(agency::cuda::parallel_executor())
+#elif defined(USE_AGENCY_OPENACC)
+    experimental::basic_parallel_policy<agency::parallel_executor>().on(acc_executor())
+#elif defined(USE_AGENCY_OPENMP)
+    experimental::basic_parallel_policy<agency::parallel_executor>().on(agency::omp::parallel_executor())
+#elif defined(USE_AGENCY_TBB)
+    experimental::basic_parallel_policy<agency::parallel_executor>().on(tbb_executor())
+#elif defined(USE_THRUST_CUDA)
+    thrust::cuda::par
+#elif defined(USE_THRUST_OPENMP)
+    thrust::omp::par
+#elif defined(USE_THRUST_TBB)
+    thrust::tbb::par
+#elif defined(USE_INTEL_PSTL)
+    pstl::execution::v1::par
+#else
+    experimental::basic_parallel_policy<agency::parallel_executor>()
+#endif
+  ;
+  
   size_t n = 8 << 20;
   if(argc > 1)
   {
     n = std::atoi(argv[1]);
   }
 
-  double bandwidth = test(n);
+  double bandwidth = test(policy, n);
 
   std::clog << n << ", " << bandwidth << std::endl;
 
-  std::cout << "Binary transform bandwidth: " << bandwidth << " GB/s" << std::endl;
+  std::cout << "inclusive_scan bandwidth: " << bandwidth << " GB/s" << std::endl;
 
   std::cout << "OK" << std::endl;
+
+  return 0;
 }
 
